@@ -1,0 +1,6 @@
+# arXiv 论文 URL 列表示例
+# 每行一个 URL，以 # 开头的行为注释
+
+# 测试用论文列表
+https://arxiv.org/abs/2512.24615
+https://arxiv.org/abs/2601.00664
