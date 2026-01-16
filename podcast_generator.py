@@ -6,10 +6,10 @@
 import os
 import re
 from typing import Dict, Any, Optional
-from openai import OpenAI
 from loguru import logger
 
-from utils.pdf_utils import encode_pdf_to_base64, compress_pdf
+from utils.pdf_utils import compress_pdf
+from utils.llm_client import create_llm_client
 
 import dotenv
 
@@ -45,7 +45,7 @@ class PodcastGenerator:
         Args:
             model: 使用的 LLM 模型名称，需要支持文件输入
         """
-        self.client = OpenAI()
+        self.llm_client = create_llm_client()
         self.model = model
         self.logger = logger
     
@@ -60,50 +60,24 @@ class PodcastGenerator:
         Returns:
             包含生成结果的字典，失败时包含 error 字段
         """
-        # 将 PDF 编码为 Base64
-        base64_string = encode_pdf_to_base64(pdf_path)
-        if not base64_string:
-            return {"error": f"无法读取 PDF 文件: {pdf_path}"}
+        # 使用统一的文件输入接口
+        result = self.llm_client.chat_with_file(
+            model=self.model,
+            prompt=prompt,
+            file_path=pdf_path,
+            file_mime = "application/pdf",
+            temperature=0.7,
+            max_tokens=8196
+        )
         
-        # 获取文件名
-        filename = os.path.basename(pdf_path)
-
-        # 构建消息
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "file",
-                        "file": {
-                            "filename": filename,
-                            "file_data": f"data:application/pdf;base64,{base64_string}",
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    }
-                ],
-            },
-        ]
+        if "error" in result:
+            return result
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=8196
-            )
-            
-            podcast_content = response.choices[0].message.content
-            podcast_content = re.sub(r'<think>.*?</think>', '', podcast_content, flags=re.DOTALL).strip()
-            
-            return {"podcast_content": podcast_content}
-            
-        except Exception as e:
-            error_msg = str(e)
-            return {"error": f"LLM 调用失败: {error_msg}", "error_msg": error_msg}
+        # 清理响应内容
+        podcast_content = result.get("content", "")
+        podcast_content = re.sub(r'<think>.*?</think>', '', podcast_content, flags=re.DOTALL).strip()
+        
+        return {"podcast_content": podcast_content}
     
     def generate_podcast(
         self, 
@@ -196,8 +170,9 @@ class PodcastGenerator:
             # 如果有概览图，添加图片
             if result.get('overview_image_relative'):
                 image_path = result['overview_image_relative']
-                output_parts.append(f"![概览图]({image_path})")
-                output_parts.append("")
+                output_parts.append(f'<div align="center">')
+                output_parts.append(f'<img src="{image_path}" alt="概览图" />')
+                output_parts.append(f'</div>')
         
         output_parts.append(result['podcast_content'])
         

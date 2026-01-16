@@ -26,12 +26,6 @@ daily_academic_podcast/
 ├── pdf_image_extractor.py     # 模块：负责从 PDF 中提取概览图
 ├── requirements.txt           # Python 依赖包列表
 ├── utils/                     # 工具函数模块
-│   ├── __init__.py
-│   ├── file_utils.py
-│   └── pdf_utils.py
-├── pdfs/                      # PDF 文件保存目录（临时，处理完成后自动删除）
-├── output/                    # 默认输出目录，存放生成的文章和图片
-│   └── images/                # 提取的概览图保存目录
 └── logs/                      # 日志目录，记录程序运行信息
 ```
 
@@ -39,7 +33,7 @@ daily_academic_podcast/
 
 ### 1. 环境准备
 
-确保你的环境中已安装 Python 3.8+ 和 pip。
+确保你的环境中已安装 Python 3.8+ 和 pip，推荐使用虚拟环境。
 
 ### 2. 安装依赖
 
@@ -51,17 +45,95 @@ pip install -r requirements.txt
 
 ### 3. 配置 API 密钥
 
-本项目通过 `openai` 库调用语言模型，使用 `python-dotenv` 从 `.env` 文件中读取 API 密钥。
+本项目支持 OpenAI 和 Gemini 两种 API 提供商，使用 `python-dotenv` 从 `.env` 文件中读取 API 密钥。
 
-请创建 `.env` 文件（项目根目录下），并设置相应的环境变量：
+请创建 `.env` 文件（项目根目录下），并设置相应的环境变量。
+
+#### API Key 配置规则
+
+项目支持两种用途的模型，每种用途可以独立配置不同的 API key：
+
+1. **播客生成模型**：用于生成播客文章内容
+2. **Grounding 模型**：用于识别和提取论文概览图
+
+#### 配置方式
+
+**优先级规则**：
+- 优先检查 OpenAI API key，如果存在则使用 OpenAI 接口
+- 否则检查 Gemini API key，如果存在则使用 Gemini 接口
+- 如果都未配置，程序会报错
+
+#### 完整配置示例
+
+在项目根目录创建 `.env` 文件，根据你的需求配置以下环境变量：
 
 ```bash
-# OpenAI API 配置（或兼容 OpenAI API 的服务）
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=your_url_key_here  # 可选，如果使用第三方兼容服务
+# ============================================
+# 播客生成模型配置（二选一）
+# ============================================
+
+# 方式 1: 使用 OpenAI API
+OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_BASE_URL=your-openai-base-url-here  # 可选
+# 如果使用第三方兼容 OpenAI API 的服务，可以设置自定义 base_url
+# 例如: OPENAI_BASE_URL=https://api.example.com/v1
+
+# 方式 2: 使用 Gemini API（如果上面没有配置 OPENAI_API_KEY，则使用此配置）
+GEMINI_API_KEY=your-gemini-api-key-here
+GEMINI_BASE_URL=your-gemini-base-url-here  # 可选
+
+# ============================================
+# Grounding 模型配置（二选一，用于识别概览图）
+# ============================================
+
+# 方式 1: 使用 OpenAI API（用于 Grounding）
+GROUNDING_OPENAI_API_KEY=sk-your-grounding-openai-api-key-here
+GROUNDING_OPENAI_BASE_URL=your-grounding-openai-base-url-here  # 可选
+
+# 方式 2: 使用 Gemini API（用于 Grounding，如果上面没有配置 GROUNDING_OPENAI_API_KEY，则使用此配置）
+GROUNDING_GEMINI_API_KEY=your-grounding-gemini-api-key-here
+GROUNDING_GEMINI_BASE_URL=your-grounding-gemini-base-url-here  # 可选
 ```
 
-**注意**: `.env` 文件已添加到 `.gitignore`，不会被提交到版本控制系统。
+#### 最小配置示例
+
+如果你只使用 OpenAI API，最小配置如下：
+
+```bash
+# 播客生成模型
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Grounding 模型（可以与播客生成模型使用相同的 key）
+GROUNDING_OPENAI_API_KEY=sk-your-openai-api-key-here
+```
+
+如果你只使用 Gemini API，最小配置如下：
+
+```bash
+# 播客生成模型
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Grounding 模型（可以与播客生成模型使用相同的 key）
+GROUNDING_GEMINI_API_KEY=your-gemini-api-key-here
+```
+
+#### 混合配置示例
+
+你也可以为不同用途配置不同的 API 提供商：
+
+```bash
+# 播客生成使用 Gemini
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Grounding 使用 OpenAI
+GROUNDING_OPENAI_API_KEY=sk-your-openai-api-key-here
+```
+
+#### 关于 BASE_URL
+
+- `BASE_URL` 参数是可选的，如果不设置，将使用对应提供商的官方 API 地址
+- 如果使用第三方兼容 OpenAI API 的服务（某些代理服务或自建服务，如 [钱多多 API](https://api2.aigcbest.top/)），可以设置自定义的 `OPENAI_BASE_URL`
+- 如果使用 Gemini API，通常不需要设置 `GEMINI_BASE_URL`，除非使用自定义的 Gemini 兼容服务
 
 ## 使用方法
 
@@ -174,26 +246,34 @@ python main.py -d --max-workers 10
 
 ### 输出文件
 
-- **单篇文章**: 在输出目录中，会为每篇成功处理的论文生成一个 `podcast_{arxiv_id}_{timestamp}_{model}.md` 文件，包含：
+- **单次运行**: 单次运行的结果会放到输出目录下的一个 `{timestamp}/` 文件夹下。
+- **单篇文章**: 在时间戳子文件夹中，会为每篇成功处理的论文生成一个 `podcast_{arxiv_id}_{timestamp}_{model}.md` 文件，包含：
   - 论文标题、arXiv ID、作者信息
-  - 提取的概览图（如果有）
+  - 提取的概览图（如果有，居中显示）
   - 生成的播客文章内容
-
 - **PDF 文件**: 下载的 PDF 文件保存在 `pdfs/` 目录中，处理完成后会自动删除以节省空间。
-
-- **概览图**: 提取的概览图保存在 `output/images/` 目录中。
-
-- **汇总报告**: 批量处理任务完成后，会生成两个汇总文件：
-  - `daily_podcast_{timestamp}_{model}.md`: 一个 Markdown 文件，将所有生成的播客文章整合在一起。
+- **概览图**: 提取的概览图保存在 `{output_dir}/{timestamp}/images/` 目录中，在 Markdown 文件中会居中显示。
+- **汇总报告**: 批量处理任务完成后，会在时间戳子文件夹中生成两个汇总文件：
+  - `daily_podcast_{timestamp}_{model}.md`: 一个 Markdown 文件，将所有生成的播客文章整合在一起，图片居中显示。
   - `summary_{timestamp}_{model}.json`: 一个 JSON 文件，包含本次任务的详细信息（时间戳、模型、成功/失败数量、所有结果等）。
-
-- **日志文件**: 运行日志保存在 `logs/` 目录中，文件名格式为 `podcast_{timestamp}.log`。
+- **日志文件**: 运行日志保存在 `logs/` 目录中，文件名格式为 `podcast_{timestamp}.log`
 
 ## 技术实现
 
+### API 调用架构
+
+本项目使用统一的 LLM 客户端模块（`utils/llm_client.py`）封装了 OpenAI 和 Gemini 两种 API 的调用，支持：
+
+- **自动选择 API 提供商**：根据环境变量中配置的 API key 自动选择使用 OpenAI 或 Gemini
+- **独立配置**：播客生成模型和 Grounding 模型可以独立配置不同的 API key 和提供商
+- **统一接口**：提供 `chat_with_file()` 和 `chat_with_image()` 两个统一接口，屏蔽底层 API 差异
+
 ### PDF 文件输入
 
-本项目使用 OpenAI API 的文件输入功能，将 PDF 文件以 Base64 编码的方式直接传递给模型：
+本项目支持两种方式处理 PDF 文件：
+
+**OpenAI API 方式**：
+将 PDF 文件以 Base64 编码的方式直接传递给模型：
 
 ```python
 messages = [
@@ -216,24 +296,41 @@ messages = [
 ]
 ```
 
-这种方式相比提取文本有以下优势：
+**Gemini API 方式**：
+使用 Gemini 的原生文档处理功能，直接将 PDF 文件以 bytes 形式传递给模型：
 
-- 保留论文的完整结构和格式
-- 图表、公式等视觉元素可被模型理解
-- 无需依赖 PDF 文本提取工具
+```python
+from google.genai import types
+
+file_part = types.Part.from_bytes(data=file_data, mime_type="application/pdf")
+response = client.models.generate_content(
+    model=model,
+    contents=[file_part, prompt]
+)
+```
 
 ### 概览图提取
 
-项目使用视觉模型（如 GPT-4.1-mini）自动识别 PDF 中的概览图（Overview Figure），通常位于论文的前几页。提取的图片会保存到输出目录，并在生成的 Markdown 文件中引用。
+项目使用视觉模型（如 GPT-4.1-mini 或 Gemini 视觉模型）自动识别 PDF 中的概览图（Overview Figure），通常位于论文的前几页。
+
+**图片输入方式**：
+
+- **OpenAI API**：使用 `image_url` 格式，将图片以 Base64 编码的 data URI 形式传递
+- **Gemini API**：使用 `types.Part.from_bytes()` 直接传递图片 bytes
+
+提取的图片会保存到输出目录，并在生成的 Markdown 文件中引用。
 
 ### 支持的模型
 
-需要使用支持文件/多模态输入的模型，例如：
-
-- `gpt-4.1-mini`（默认）
-- `gemini-3-pro-preview`
-- `gpt-5.2`
+**播客生成模型**（需要支持 PDF 文件输入）：
+- OpenAI 系列：`gpt-4.1-mini`（默认）、`gpt-5.2` 等
+- Gemini 系列：`gemini-3-pro-preview`、`gemini-2.5-flash` 等
 - 其他支持 PDF 输入的 OpenAI 兼容模型
+
+**Grounding 模型**（需要支持图片输入）：
+- OpenAI 系列：`gpt-4.1-mini`（默认）、`gpt-4o` 等
+- Gemini 系列：`gemini-3-pro-preview`、`gemini-2.5-flash` 等
+- 其他视觉模型：`Qwen/Qwen3-VL-235B-A22B-Instruct` 等
 
 ### 推荐模型组合
 
@@ -298,7 +395,10 @@ python main.py -d -m gemini-3-pro-preview --grounding-model Qwen/Qwen3-VL-235B-A
 
 ### 常见问题
 
-1. **API 密钥错误**: 确保 `.env` 文件中的 `OPENAI_API_KEY` 设置正确。
+1. **API 密钥错误**: 
+   - 确保 `.env` 文件中至少配置了 `OPENAI_API_KEY` 或 `GEMINI_API_KEY`（用于播客生成）
+   - 如果使用概览图提取功能，还需要配置 `GROUNDING_OPENAI_API_KEY` 或 `GROUNDING_GEMINI_API_KEY`
+   - 检查 API key 是否正确，是否有足够的配额
 
 2. **网络连接失败**: 检查网络连接，确保可以访问 arXiv、Huggingface 和 API 服务。
 

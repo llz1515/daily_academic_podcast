@@ -85,22 +85,26 @@ class ArxivPodcastPipeline:
         """
         self.max_pages = max_pages
         self.max_workers = max_workers
-        self.output_dir = output_dir
         self.pdf_dir = pdf_dir
         self.custom_prompt = custom_prompt
         self.model = model
+        self.logger = logger
+
+        # 创建以时间命名的子文件夹
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.output_dir = os.path.join(output_dir, timestamp)
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.logger.info(f"输出目录: {self.output_dir}")
         
         self.fetcher = ArxivFetcher(pdf_dir=pdf_dir)
         self.generator = PodcastGenerator(model=model)
-        image_output_dir = os.path.join(output_dir, "images")
+        image_output_dir = os.path.join(self.output_dir, "images")
         self.image_extractor = PDFImageExtractor(
             output_dir=image_output_dir,
             grounding_model=grounding_model
         )
-        self.logger = logger
         
         # 确保目录存在
-        os.makedirs(output_dir, exist_ok=True)
         os.makedirs(pdf_dir, exist_ok=True)
     
     def process_single(self, url: str) -> Dict[str, Any]:
@@ -316,8 +320,9 @@ class ArxivPodcastPipeline:
                 # 如果有概览图，添加图片
                 if result.get('overview_image_relative'):
                     image_path = result['overview_image_relative']
-                    lines.append(f"![概览图]({image_path})")
-                    lines.append("")
+                    lines.append(f'<div align="center">')
+                    lines.append(f'<img src="{image_path}" alt="概览图" />')
+                    lines.append(f'</div>')
                 
                 lines.append(result.get('podcast_content', ''))
             

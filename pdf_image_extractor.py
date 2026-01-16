@@ -9,12 +9,12 @@ import re
 from datetime import datetime
 from typing import Optional, Dict
 import fitz  # PyMuPDF
-from openai import OpenAI
 from loguru import logger
 
 from utils.pdf_utils import pdf_page_to_image
 from utils.image_utils import image_to_base64, crop_image
 from utils.file_utils import get_safe_model_name
+from utils.llm_client import create_llm_client
 
 import dotenv
 
@@ -52,7 +52,7 @@ class PDFImageExtractor:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         self.logger = logger
-        self.client = OpenAI()
+        self.llm_client = create_llm_client(is_grounding=True)
         self.grounding_model = grounding_model
     
     def extract_image(
@@ -161,30 +161,21 @@ class PDFImageExtractor:
         """
 
         try:
-            response = self.client.chat.completions.create(
-                model = self.grounding_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=256,
-                temperature=0.1 
+            # 使用统一的图片输入接口
+            result = self.llm_client.chat_with_image(
+                model=self.grounding_model,
+                prompt=prompt,
+                image_base64=image_base64,
+                image_mime="image/png",
+                max_tokens=8192,
+                temperature=0.1
             )
             
-            content = response.choices[0].message.content.strip()
+            if "error" in result:
+                self.logger.error(f"调用模型识别概览图时出错: {result['error']}")
+                return None
+            
+            content = result.get("content", "").strip()
             self.logger.debug(f"模型响应: {content}")
             
             # 解析 <box>(x1, y1),(x2, y2)</box> 格式
