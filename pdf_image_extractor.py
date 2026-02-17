@@ -1,7 +1,7 @@
 """
 PDF 图片提取模块
 从 PDF 文件中提取论文的 Overview/Architecture 图
-使用 GPT-4o-mini 识别第一页中的概览图位置并截取
+使用视觉模型识别概览图位置并截取
 """
 
 import os
@@ -20,7 +20,8 @@ import dotenv
 
 dotenv.load_dotenv(override=True)
 
-prompt = """
+# 默认的 grounding prompt
+DEFAULT_GROUNDING_PROMPT = """
 你是一个专业的视觉定位助手。请分析这张学术论文第一页的图片，识别出论文的概览图（Overview Figure）或架构图（Architecture Figure）。
 
 概览图的特征：
@@ -39,21 +40,28 @@ prompt = """
 """
 
 class PDFImageExtractor:
-    """PDF 图片提取器 - 使用 VLM识别概览图位置"""
-    
-    def __init__(self, output_dir: str, grounding_model: str):
+    """PDF 图片提取器 - 使用 VLM 识别概览图位置"""
+
+    def __init__(
+        self,
+        output_dir: str,
+        grounding_model: str,
+        custom_grounding_prompt: Optional[str] = None
+    ):
         """
         初始化图片提取器
-        
+
         Args:
             output_dir: 图片保存目录
             grounding_model: 用于识别概览图的视觉模型
+            custom_grounding_prompt: 自定义 grounding prompt（可选）
         """
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         self.logger = logger
         self.llm_client = create_llm_client(is_grounding=True)
         self.grounding_model = grounding_model
+        self.grounding_prompt = custom_grounding_prompt or DEFAULT_GROUNDING_PROMPT
     
     def extract_image(
         self, 
@@ -150,21 +158,21 @@ class PDFImageExtractor:
     def _identify_overview_bbox_with_gpt(self, image_base64: str, img_width: int, img_height: int) -> Optional[Dict[str, float]]:
         """
         识别概览图的边界框
-        
+
         Args:
             image_base64: base64编码的图片
             img_width: 图片宽度（像素）
             img_height: 图片高度（像素）
-            
+
         Returns:
             包含x, y, width, height的字典（像素坐标），失败返回None
         """
 
         try:
-            # 使用统一的图片输入接口
+            # 使用统一的图片输入接口，使用自定义或默认的 grounding_prompt
             result = self.llm_client.chat_with_image(
                 model=self.grounding_model,
-                prompt=prompt,
+                prompt=self.grounding_prompt,
                 image_base64=image_base64,
                 image_mime="image/png",
                 max_tokens=8192,

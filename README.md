@@ -1,16 +1,20 @@
 # arXiv Daily Podcast 自动化生成器
 
-这是一个 Python 项目，旨在自动化地将一篇或多篇 arXiv 论文转化为通俗易懂、适合播客的博客文章。项目通过下载论文 PDF 文件，并直接将 PDF 传递给支持文件输入的大型语言模型（如 GPT-4.1-mini、Gemini），生成结构化的三段式解读文章。
+这是一个 Python 项目，旨在自动化地将一篇或多篇 arXiv 论文转化为通俗易懂、适合播客的博客文章。项目通过下载论文 PDF 文件，并直接将 PDF 传递给支持文件输入的大型语言模型（如 Gemini、GPT），生成结构化的三段式解读文章。
+
+**推荐配置**：使用 `gemini-3-pro-preview` 模型可获得最佳效果（经测试验证）。
 
 ## 主要功能
 
 - **PDF 直接输入**: 将论文 PDF 文件直接传递给 LLM，保留完整的论文结构、图表和公式信息。
-- **自动获取论文**: 
+- **自动获取论文**:
   - 从 arXiv URL 自动抓取论文元信息并下载 PDF 文件
   - 从 Huggingface 每日论文 API 自动获取当日热门论文
   - 支持从文件读取 URL 列表
 - **概览图提取**: 自动从 PDF 中提取论文概览图（Overview Figure）
 - **高质量内容生成**: 调用支持文件输入的 LLM 生成符合特定格式和风格的播客文章
+  - **推荐模型**: `gemini-3-pro-preview`（经测试效果最佳）
+  - 支持自定义 Prompt 优化输出效果
 - **批量处理**: 支持一次性处理多个 URL，支持并行处理以提高效率
 - **灵活配置**: 用户可以轻松更换 LLM 模型、自定义生成 Prompt、调整并行数量等
 - **结构化输出**: 为每篇论文生成独立的 Markdown 文件，并为每次批量任务生成包含所有文章的汇总报告
@@ -137,112 +141,293 @@ GROUNDING_OPENAI_API_KEY=sk-your-openai-api-key-here
 
 ## 使用方法
 
-你可以通过 `main.py` 脚本来运行此项目。脚本支持多种输入方式，提供了灵活的使用方式。
+本项目通过 `config.yml` 配置文件进行参数设置，运行时只需执行 `python main.py` 即可。
 
-### 命令行帮助
+### 第一次使用
 
-要查看所有可用的命令和选项，请运行：
+1. **创建配置文件**: 项目根目录下已提供 `config.yml` 配置文件模板
+2. **编辑配置**: 根据需要修改 `config.yml` 中的参数
+3. **运行程序**: 执行 `python main.py`
 
-```bash
-python main.py --help
+### 配置文件说明
+
+配置文件 `config.yml` 包含以下几个部分：
+
+#### 1. 输入源配置 (`input`)
+
+支持三种输入方式，可以同时启用多种：
+
+**从 Huggingface 爬取每日论文**:
+```yaml
+input:
+  daily:
+    enabled: true  # 启用此功能
+    limit: 5       # 保留前 N 篇论文
 ```
 
-### 输入方式
+**从文件读取 URL 列表**:
+```yaml
+input:
+  file:
+    enabled: true           # 启用此功能
+    path: "test_urls.txt"   # URL 列表文件路径（每行一个 URL）
+```
 
-项目支持三种输入方式，可以单独使用或组合使用：
+**直接输入 arXiv 链接**:
+```yaml
+input:
+  arxiv:
+    enabled: true
+    urls:
+      - "https://arxiv.org/abs/2310.08560"
+      - "https://arxiv.org/abs/2312.00752"
+```
 
-1. **从 Huggingface 爬取每日论文** (`-d, --daily`)
-2. **从文件读取 URL 列表** (`-f, --file`)
-3. **直接输入 arXiv 链接** (`-a, --arxiv`)
+#### 2. 输出配置 (`output`)
 
-### 示例
+```yaml
+output:
+  dir: "output"      # 输出目录
+  pdf_dir: "pdfs"    # PDF 临时保存目录
+```
+
+#### 3. 模型配置 (`models`)
+
+```yaml
+models:
+  # 播客生成模型（需支持 PDF 文件输入）
+  podcast_model: "gpt-4.1-mini"
+
+  # 概览图识别模型（需支持图片输入）
+  grounding_model: "gpt-4.1-mini"
+```
+
+推荐模型组合（最佳效果）:
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"  # 经测试效果最佳
+  grounding_model: "gemini-3-pro-preview"  # 同时用于概览图识别
+```
+
+备用组合:
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "Qwen/Qwen3-VL-235B-A22B-Instruct"
+```
+
+#### 4. Prompt 配置 (`prompt`)
+
+```yaml
+prompt:
+  # 自定义播客生成 prompt 文件路径（可选）
+  custom_file: null
+  # 例如: custom_file: "prompts/gpt5_podcast_prompt.txt"
+
+  # 自定义概览图识别 prompt 文件路径（可选）
+  grounding_file: null
+  # 例如: grounding_file: "prompts/gpt5_grounding_prompt.txt"
+```
+
+**说明**：
+- `custom_file`: 用于生成播客文章内容的提示词文件
+- `grounding_file`: 用于识别和定位论文概览图的提示词文件
+- 两个配置都是可选的，如果不指定则使用默认提示词
+- 项目提供了针对 GPT-5.2 优化的提示词模板供参考
+
+#### 5. 性能配置 (`performance`)
+
+```yaml
+performance:
+  max_workers: 5  # 最大并行处理数量（建议 3-10）
+  max_pages: 5    # 搜索概览图的最大页数
+```
+
+#### 6. 日志配置 (`logging`)
+
+```yaml
+logging:
+  dir: "logs"      # 日志目录
+  level: "INFO"    # 日志级别: DEBUG, INFO, WARNING, ERROR
+```
+
+### 使用示例
 
 #### 1. 从 Huggingface 获取每日论文（推荐）
 
-```bash
-# 获取当日论文（默认保留前 5 篇）
-python main.py -d
+编辑 `config.yml`:
+```yaml
+input:
+  daily:
+    enabled: true
+    limit: 7  # 获取前 7 篇
+```
 
-# 获取当日论文，保留前 7 篇
-python main.py -d --daily-limit 7
+运行:
+```bash
+python main.py
 ```
 
 #### 2. 从文件读取 URL 列表
 
-创建一个文本文件（例如 `test_urls.txt`），每行包含一个 arXiv 链接：
-
+创建文本文件 `test_urls.txt`（每行一个 arXiv 链接）:
 ```
 https://arxiv.org/abs/2310.08560
 https://arxiv.org/abs/2312.00752
 ```
 
-然后运行：
+编辑 `config.yml`:
+```yaml
+input:
+  file:
+    enabled: true
+    path: "test_urls.txt"
+```
 
+运行:
 ```bash
-python main.py -f test_urls.txt
+python main.py
 ```
 
 #### 3. 直接输入 arXiv 链接
 
-```bash
-# 处理单篇论文
-python main.py -a https://arxiv.org/abs/2310.08560
+编辑 `config.yml`:
+```yaml
+input:
+  arxiv:
+    enabled: true
+    urls:
+      - "https://arxiv.org/abs/2310.08560"
+      - "https://arxiv.org/abs/2312.00752"
+```
 
-# 处理多篇论文
-python main.py -a https://arxiv.org/abs/2310.08560 https://arxiv.org/abs/2312.00752
+运行:
+```bash
+python main.py
 ```
 
 #### 4. 组合使用多种输入方式
 
-```bash
-# 组合使用：爬取每日论文 + 文件中的额外论文
-python main.py -d -f test_urls.txt
-
-# 组合使用：爬取每日论文 + 直接输入的链接
-python main.py -d -a https://arxiv.org/abs/2310.08560
-
-# 三种方式组合使用
-python main.py -d -f test_urls.txt -a https://arxiv.org/abs/2310.08560
+编辑 `config.yml`:
+```yaml
+input:
+  daily:
+    enabled: true
+    limit: 5
+  file:
+    enabled: true
+    path: "test_urls.txt"
+  arxiv:
+    enabled: true
+    urls:
+      - "https://arxiv.org/abs/2310.08560"
 ```
 
-#### 5. 指定输出目录和模型
-
+运行:
 ```bash
-# 使用默认模型
-python main.py -d -o ./my_podcasts -m gpt-4.1-mini
+python main.py
+```
 
-# 使用推荐模型组合（最佳效果）
-python main.py -d -o ./my_podcasts -m gemini-3-pro-preview --grounding-model Qwen/Qwen3-VL-235B-A22B-Instruct
+#### 5. 使用推荐模型组合
+
+编辑 `config.yml`:
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "gemini-3-pro-preview"
+```
+
+运行:
+```bash
+python main.py
 ```
 
 #### 6. 使用自定义 Prompt
 
+**自定义播客生成 Prompt**：
+```yaml
+prompt:
+  custom_file: "my_podcast_prompt.txt"
+```
+
+**自定义概览图识别 Prompt**：
+```yaml
+prompt:
+  grounding_file: "my_grounding_prompt.txt"
+```
+
+**同时使用两个自定义 Prompt**：
+```yaml
+prompt:
+  custom_file: "prompts/gpt5_podcast_prompt.txt"
+  grounding_file: "prompts/gpt5_grounding_prompt.txt"
+```
+
+运行:
 ```bash
-python main.py -a https://arxiv.org/abs/2310.08560 -p my_prompt.txt
+python main.py
 ```
 
 #### 7. 调整并行处理数量
 
-```bash
-# 使用 10 个并行线程处理
-python main.py -d --max-workers 10
+编辑 `config.yml`:
+```yaml
+performance:
+  max_workers: 10  # 使用 10 个并行线程
 ```
 
-### 命令行参数
+运行:
+```bash
+python main.py
+```
 
-| 参数 | 说明 |
-|------|------|
-| `-d, --daily` | 从 Huggingface 爬取每日论文 |
-| `-f, --file` | 从文件读取 URL 列表（每行一个 URL） |
-| `-a, --arxiv` | 直接输入 arXiv 论文链接（可输入多个） |
-| `-o, --output` | 输出目录（默认: `output`） |
-| `--pdf-dir` | PDF 文件保存目录（默认: `pdfs`） |
-| `-m, --model` | LLM 模型名称（默认: `gpt-4.1-mini`，可选: `gemini-3-pro-preview`, `gpt-4.1-mini`, `gpt-5.2`） |
-| `-p, --prompt-file` | 自定义 prompt 文件路径 |
-| `--daily-limit` | 保留 Huggingface 每日论文的前 N 篇（默认: 5） |
-| `--grounding-model` | 用于识别概览图的视觉模型（默认: `gpt-4.1-mini`，可选: `gpt-4.1-mini`, `Qwen/Qwen3-VL-235B-A22B-Instruct`） |
-| `--max-pages` | 搜索概览图的最大页数（默认: 5） |
-| `--max-workers` | 最大并行处理数量（默认: 5） |
+### 配置参数说明
+
+#### 输入源参数 (`input`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `daily.enabled` | boolean | false | 是否从 Huggingface 爬取每日论文 |
+| `daily.limit` | integer | 5 | 保留 Huggingface 每日论文的前 N 篇 |
+| `file.enabled` | boolean | false | 是否从文件读取 URL 列表 |
+| `file.path` | string | "test_urls.txt" | URL 列表文件路径（每行一个 URL） |
+| `arxiv.enabled` | boolean | false | 是否使用直接输入的 arXiv 链接 |
+| `arxiv.urls` | list | [] | arXiv 论文链接列表 |
+
+#### 输出参数 (`output`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `dir` | string | "output" | 输出目录 |
+| `pdf_dir` | string | "pdfs" | PDF 文件临时保存目录 |
+
+#### 模型参数 (`models`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `podcast_model` | string | "gpt-4.1-mini" | 播客生成模型（需支持 PDF 文件输入）<br>**推荐**: `gemini-3-pro-preview`（经测试效果最佳）<br>可选: `gpt-4.1-mini`, `gpt-5.2`, `gpt-5.2-high`, `gemini-2.5-flash` |
+| `grounding_model` | string | "gpt-4.1-mini" | 概览图识别模型（需支持图片输入）<br>**推荐**: `gemini-3-pro-preview`（与播客模型统一）<br>可选: `gpt-4.1-mini`, `gpt-4o`, `Qwen/Qwen3-VL-235B-A22B-Instruct` |
+
+#### Prompt 参数 (`prompt`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `custom_file` | string | null | 自定义播客生成 prompt 文件路径（可选） |
+| `grounding_file` | string | null | 自定义概览图识别 prompt 文件路径（可选） |
+
+#### 性能参数 (`performance`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `max_workers` | integer | 5 | 最大并行处理数量（建议 3-10） |
+| `max_pages` | integer | 5 | 搜索概览图的最大页数 |
+
+#### 日志参数 (`logging`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `dir` | string | "logs" | 日志目录 |
+| `level` | string | "INFO" | 日志级别: DEBUG, INFO, WARNING, ERROR |
 
 ### 输出文件
 
@@ -323,27 +508,54 @@ response = client.models.generate_content(
 ### 支持的模型
 
 **播客生成模型**（需要支持 PDF 文件输入）：
-- OpenAI 系列：`gpt-4.1-mini`（默认）、`gpt-5.2` 等
-- Gemini 系列：`gemini-3-pro-preview`、`gemini-2.5-flash` 等
+- **Gemini 系列**（推荐）：
+  - `gemini-3-pro-preview` ⭐ **最佳效果**（经测试验证）
+  - `gemini-2.5-flash`（速度快，效果略逊）
+- **OpenAI 系列**：
+  - `gpt-4.1-mini`（默认）
+  - `gpt-5.2`
+  - `gpt-5.2-high`
 - 其他支持 PDF 输入的 OpenAI 兼容模型
 
 **Grounding 模型**（需要支持图片输入）：
-- OpenAI 系列：`gpt-4.1-mini`（默认）、`gpt-4o` 等
-- Gemini 系列：`gemini-3-pro-preview`、`gemini-2.5-flash` 等
-- 其他视觉模型：`Qwen/Qwen3-VL-235B-A22B-Instruct` 等
+- **Gemini 系列**（推荐）：
+  - `gemini-3-pro-preview` ⭐ **推荐**（与播客模型统一，效果稳定）
+  - `gemini-2.5-flash`
+- **OpenAI 系列**：
+  - `gpt-4.1-mini`（默认）
+  - `gpt-4o`
+  - `gpt-5.2-high`
+- **专业视觉模型**：
+  - `Qwen/Qwen3-VL-235B-A22B-Instruct`（专门的视觉识别模型）
 
 ### 推荐模型组合
 
-为了获得最佳效果，推荐使用以下模型组合：
+经过测试，为了获得最佳效果，推荐使用以下模型组合：
 
-- **文本生成模型**: `gemini-3-pro-preview` - 用于生成播客文章内容
-- **Grounding 模型**: `Qwen/Qwen3-VL-235B-A22B-Instruct` - 用于识别和提取论文概览图
+**推荐组合（最佳效果）**：
+- **播客生成模型**: `gemini-3-pro-preview` - 用于生成高质量播客文章内容
+- **概览图识别模型**: `gemini-3-pro-preview` - 用于精确识别和提取论文概览图
 
-使用推荐组合的示例命令：
+在 `config.yml` 中配置推荐组合:
 
-```bash
-python main.py -d -m gemini-3-pro-preview --grounding-model Qwen/Qwen3-VL-235B-A22B-Instruct
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "gemini-3-pro-preview"
 ```
+
+**备用组合**：
+如果需要更专业的视觉识别能力，可以为 grounding 使用专门的视觉模型：
+
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "Qwen/Qwen3-VL-235B-A22B-Instruct"
+```
+
+**其他可选模型**：
+- OpenAI 系列：`gpt-4.1-mini`, `gpt-5.2`, `gpt-5.2-high`
+- Gemini 系列：`gemini-2.5-flash`（速度更快但效果略逊）
 
 ### 并行处理
 
@@ -353,7 +565,11 @@ python main.py -d -m gemini-3-pro-preview --grounding-model Qwen/Qwen3-VL-235B-A
 
 ### 修改 Prompt
 
-默认的生成 Prompt 定义在 `podcast_generator.py` 文件的 `PODCAST_PROMPT` 变量中。你可以直接修改此字符串以调整生成文章的风格、结构或要求。
+项目提供了两种 Prompt 配置：
+
+#### 1. 播客生成 Prompt
+
+默认的播客生成 Prompt 定义在 `podcast_generator.py` 文件的 `PODCAST_PROMPT` 变量中。你可以直接修改此字符串以调整生成文章的风格、结构或要求。
 
 默认 Prompt 要求生成三段式文章：
 
@@ -363,50 +579,117 @@ python main.py -d -m gemini-3-pro-preview --grounding-model Qwen/Qwen3-VL-235B-A
 
 总字数严格控制在 900 字以内。
 
-你也可以通过 `-p` 参数指定自定义的 prompt 文件。
+你也可以通过在 `config.yml` 中设置 `prompt.custom_file` 参数指定自定义的 prompt 文件：
+
+```yaml
+prompt:
+  custom_file: "my_podcast_prompt.txt"
+```
+
+#### 2. 概览图识别 Prompt
+
+默认的 grounding prompt 定义在 `pdf_image_extractor.py` 文件的 `DEFAULT_GROUNDING_PROMPT` 变量中。这个 prompt 用于指导视觉模型识别和定位论文中的概览图。
+
+你可以通过在 `config.yml` 中设置 `prompt.grounding_file` 参数指定自定义的 grounding prompt 文件：
+
+```yaml
+prompt:
+  grounding_file: "my_grounding_prompt.txt"
+```
+
+#### 推荐配置
+
+项目在 `prompts/` 目录下提供了针对 GPT-5.2 优化的提示词模板：
+- `prompts/gpt5_podcast_prompt.txt` - 优化的播客生成提示词
+- `prompts/gpt5_grounding_prompt.txt` - 优化的概览图识别提示词
+
+在 `config.yml` 中使用：
+
+```yaml
+prompt:
+  custom_file: "prompts/gpt5_podcast_prompt.txt"
+  grounding_file: "prompts/gpt5_grounding_prompt.txt"
+```
 
 ### 更换模型
 
-通过 `-m` 参数指定模型名称。确保所选模型支持 PDF 文件输入。
+在 `config.yml` 中修改模型名称。确保所选模型支持 PDF 文件输入（用于播客生成）或图片输入（用于概览图识别）：
+
+**推荐配置（经测试最佳效果）**：
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "gemini-3-pro-preview"
+```
+
+**其他可选配置**：
+```yaml
+models:
+  podcast_model: "gpt-5.2-high"  # OpenAI 高级模型
+  grounding_model: "gpt-5.2-high"
+```
+
+或使用专门的视觉模型：
+```yaml
+models:
+  podcast_model: "gemini-3-pro-preview"
+  grounding_model: "Qwen/Qwen3-VL-235B-A22B-Instruct"  # 专业视觉模型
+```
 
 ### 调整并行数量
 
-根据你的 API 配额和网络情况，可以通过 `--max-workers` 参数调整并行处理数量。建议值：
+根据你的 API 配额和网络情况，可以在 `config.yml` 中调整并行处理数量。建议值：
 - 小规模（1-5 篇）：3-5
 - 中规模（5-10 篇）：5-8
 - 大规模（10+ 篇）：8-10
 
+```yaml
+performance:
+  max_workers: 8
+```
+
 ## 注意事项
 
-1. **文件大小限制**: 单个 PDF 文件不应超过模型支持的最大文件大小。如果文件过大，程序会自动尝试压缩后重试。
+1. **配置文件**: 首次运行前，请确保 `config.yml` 文件存在且配置正确。至少需要启用一种输入方式。
 
-2. **API 配额**: 由于 PDF 文件会被转换为图像和文本，token 消耗可能较高。请确保你的 API 账户有足够的配额。
+2. **文件大小限制**: 单个 PDF 文件不应超过模型支持的最大文件大小。如果文件过大，程序会自动尝试压缩后重试。
 
-3. **网络要求**: 
+3. **API 配额**: 由于 PDF 文件会被转换为图像和文本，token 消耗可能较高。请确保你的 API 账户有足够的配额。
+
+4. **网络要求**:
    - 需要能够访问 arXiv 网站下载论文
    - 需要能够访问 Huggingface API 获取每日论文列表
    - 需要能够访问你配置的 LLM API 服务
 
-4. **PDF 处理**: 处理完成后，PDF 文件会自动删除以节省空间。如果需要保留 PDF，可以修改 `main.py` 中的相关代码。
+5. **PDF 处理**: 处理完成后，PDF 文件会自动删除以节省空间。如果需要保留 PDF，可以修改 `main.py` 中的相关代码。
 
-5. **日志记录**: 所有操作都会记录到日志文件中，方便排查问题。日志文件会自动轮转和压缩。
+6. **日志记录**: 所有操作都会记录到日志文件中，方便排查问题。日志文件会自动轮转和压缩。日志级别可在 `config.yml` 中配置。
 
 ## 故障排除
 
 ### 常见问题
 
-1. **API 密钥错误**: 
+1. **配置文件不存在或格式错误**:
+   - 确保 `config.yml` 文件存在于项目根目录
+   - 检查 YAML 格式是否正确（注意缩进和冒号后的空格）
+   - 可以参考项目提供的配置文件模板
+
+2. **未启用任何输入方式**:
+   - 在 `config.yml` 中至少将一种输入方式的 `enabled` 设置为 `true`
+   - 检查配置文件格式是否正确
+
+3. **API 密钥错误**:
    - 确保 `.env` 文件中至少配置了 `OPENAI_API_KEY` 或 `GEMINI_API_KEY`（用于播客生成）
    - 如果使用概览图提取功能，还需要配置 `GROUNDING_OPENAI_API_KEY` 或 `GROUNDING_GEMINI_API_KEY`
    - 检查 API key 是否正确，是否有足够的配额
 
-2. **网络连接失败**: 检查网络连接，确保可以访问 arXiv、Huggingface 和 API 服务。
+4. **网络连接失败**: 检查网络连接，确保可以访问 arXiv、Huggingface 和 API 服务。
 
-3. **PDF 下载失败**: 检查 arXiv URL 是否正确，论文是否存在。
+5. **PDF 下载失败**: 检查 arXiv URL 是否正确，论文是否存在。
 
-4. **模型不支持文件输入**: 确保使用的模型支持 PDF 文件输入功能。
+6. **模型不支持文件输入**: 确保在 `config.yml` 中配置的模型支持 PDF 文件输入功能（用于播客生成）或图片输入（用于概览图识别）。
 
-5. **并行处理导致 API 限流**: 减少 `--max-workers` 的值，或增加 API 请求间隔。
+7. **并行处理导致 API 限流**: 在 `config.yml` 中减少 `performance.max_workers` 的值。
 
 ### 查看日志
 
